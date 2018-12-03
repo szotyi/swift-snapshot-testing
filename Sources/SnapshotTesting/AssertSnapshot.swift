@@ -104,6 +104,11 @@ public func verifySnapshot<A, B>(
         optionalDiffable = b
         tookSnapshot.fulfill()
       }
+
+      if snapshotting.isAsync {
+
+      }
+      
       let result = XCTWaiter.wait(for: [tookSnapshot], timeout: timeout)
       switch result {
       case .completed:

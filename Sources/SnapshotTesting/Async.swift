@@ -27,4 +27,12 @@ public struct Async<Value> {
   public init(value: Value) {
     self.init { callback in callback(value) }
   }
+
+  public func map<NewValue>(_ f: @escaping (Value) -> NewValue) -> Async<NewValue> {
+    return Async<NewValue> { callback in
+      self.run { a in
+        callback(f(a))
+      }
+    }
+  }
 }

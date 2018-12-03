@@ -607,6 +607,8 @@ private final class ScaledWindow: NSWindow {
 extension Array {
   func sequence<A>() -> Async<[A]> where Element == Async<A> {
     guard !self.isEmpty else { return Async(value: []) }
+    guard self.count > 1 else { return self.first!.map { [$0] } }
+
     return Async<[A]> { callback in
       var result = [A?](repeating: nil, count: self.count)
       result.reserveCapacity(self.count)
