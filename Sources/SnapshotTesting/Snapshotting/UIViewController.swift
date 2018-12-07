@@ -65,5 +65,13 @@ extension Snapshotting where Value == UIViewController, Format == String {
   public static var recursiveDescription: Snapshotting {
     return Snapshotting<UIView, String>.recursiveDescription.pullback { $0.view }
   }
+
+  public static var hierarchy: Snapshotting {
+    return Snapshotting<String, String>.lines.pullback { vc in
+      purgePointers(
+        vc.perform(Selector(("_printHierarchy"))).retain().takeUnretainedValue() as! String
+      )
+    }
+  }
 }
 #endif

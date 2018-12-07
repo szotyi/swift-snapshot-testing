@@ -108,7 +108,7 @@ public func verifySnapshot<A, B>(
       if snapshotting.isAsync {
 
       }
-      
+
       let result = XCTWaiter.wait(for: [tookSnapshot], timeout: timeout)
       switch result {
       case .completed:

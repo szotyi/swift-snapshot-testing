@@ -465,6 +465,38 @@ class SnapshotTestingTests: TestCase {
     }
     #endif
   }
+
+  func testViewControllerHierarchy() {
+    let page = UIPageViewController.init(transitionStyle: .scroll, navigationOrientation: .horizontal)
+    page.setViewControllers([UIViewController()], direction: .forward, animated: false)
+
+    class Delegate: NSObject, UIPageViewControllerDelegate {
+
+    }
+
+    class DataSource: NSObject, UIPageViewControllerDataSource {
+      func pageViewController(_ pageViewController: UIPageViewController, viewControllerBefore viewController: UIViewController) -> UIViewController? {
+        return UIViewController()
+      }
+
+      func pageViewController(_ pageViewController: UIPageViewController, viewControllerAfter viewController: UIViewController) -> UIViewController? {
+        return UIViewController()
+      }
+    }
+
+    let nav = UINavigationController()
+    let tab = UITabBarController()
+    tab.viewControllers = [
+      page,
+      UIViewController(),
+      UIViewController(),
+      UIViewController(),
+      UIViewController()
+    ]
+    nav.viewControllers = [tab]
+
+    assertSnapshot(matching: nav, as: .hierarchy)
+  }
 }
 
 #if os(Linux)
