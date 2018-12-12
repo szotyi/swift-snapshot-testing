@@ -21,6 +21,13 @@ class SnapshotTestingTests: TestCase {
     diffTool = "ksdiff"
 //    record = true
   }
+  
+  override func tearDown() {
+    #if !os(Linux)
+    assertAllSnapshotsChecked(for: SnapshotTestingTests.self)
+    #endif
+    super.tearDown()
+  }
 
   func testAny() {
     struct User { let id: Int, name: String, bio: String }
@@ -77,7 +84,7 @@ class SnapshotTestingTests: TestCase {
       view.addSubview(webView)
       view.addSubview(skView)
 
-      assertSnapshot(matching: view, as: .image, named: platform)
+      assertSnapshot(matching: view, as: .image)
     }
     #endif
   }
@@ -125,9 +132,9 @@ class SnapshotTestingTests: TestCase {
     #endif
     if #available(macOS 10.14, *) {
       label.text = "Hello."
-      assertSnapshot(matching: label, as: .image(precision: 0.9), named: platform)
+      assertSnapshot(matching: label, as: .image(precision: 0.9))
       label.text = "Hello"
-      assertSnapshot(matching: label, as: .image(precision: 0.9), named: platform)
+      assertSnapshot(matching: label, as: .image(precision: 0.9))
     }
     #endif
   }
@@ -162,8 +169,7 @@ class SnapshotTestingTests: TestCase {
 
       assertSnapshot(
         matching: scene,
-        as: .image(size: .init(width: 500, height: 500)),
-        named: platform
+        as: .image(size: .init(width: 500, height: 500))
       )
     }
     #endif
@@ -181,8 +187,7 @@ class SnapshotTestingTests: TestCase {
 
       assertSnapshot(
         matching: scene,
-        as: .image(size: .init(width: 50, height: 50)),
-        named: platform
+        as: .image(size: .init(width: 50, height: 50))
       )
     }
     #endif
@@ -459,8 +464,7 @@ class SnapshotTestingTests: TestCase {
     if #available(macOS 10.14, *) {
       assertSnapshot(
         matching: webView,
-        as: .image(size: .init(width: 800, height: 600)),
-        named: platform
+        as: .image(size: .init(width: 800, height: 600))
       )
     }
     #endif

@@ -72,32 +72,10 @@ public func verifySnapshot<Value, Format>(
     let recording = recording || record
 
     do {
-      let fileUrl = URL(fileURLWithPath: "\(file)")
-      let fileName = fileUrl.deletingPathExtension().lastPathComponent
-      let directoryUrl = fileUrl.deletingLastPathComponent()
-      let snapshotDirectoryUrl: URL = directoryUrl
-        .appendingPathComponent("__Snapshots__")
-        .appendingPathComponent(fileName)
-
-      let identifier: String
-      if let name = name {
-        identifier = sanitizePathComponent(name)
-      } else {
-        let counter = counterQueue.sync { () -> Int in
-          let key = snapshotDirectoryUrl.appendingPathComponent(testName)
-          counterMap[key, default: 0] += 1
-          return counterMap[key]!
-        }
-        identifier = String(counter)
-      }
-
-      let testName = sanitizePathComponent(testName)
-      let snapshotFileUrl = snapshotDirectoryUrl
-        .appendingPathComponent("\(testName).\(identifier)")
-        .appendingPathExtension(snapshotting.pathExtension ?? "")
+      let (directoryUrl, fileUrl, fileName) = snapshot(file: file, name: name, testName: testName, pathExtension: snapshotting.pathExtension ?? "")
       let fileManager = FileManager.default
-      try fileManager.createDirectory(at: snapshotDirectoryUrl, withIntermediateDirectories: true)
-      checked[snapshotDirectoryUrl, default: []].append(snapshotFileUrl)
+      try fileManager.createDirectory(at: directoryUrl, withIntermediateDirectories: true)
+      checked[directoryUrl, default: []].append(fileUrl)
 
 
       let tookSnapshot = XCTestExpectation(description: "Took snapshot")
@@ -120,12 +98,12 @@ public func verifySnapshot<Value, Format>(
         return "Couldn't snapshot value"
       }
 
-      guard !recording, fileManager.fileExists(atPath: snapshotFileUrl.path) else {
-        try snapshotting.diffing.toData(diffable).write(to: snapshotFileUrl)
-        return "Recorded snapshot: …\n\n\"\(snapshotFileUrl.path)\""
+      guard !recording, fileManager.fileExists(atPath: fileUrl.path) else {
+        try snapshotting.diffing.toData(diffable).write(to: fileUrl)
+        return "Recorded snapshot: …\n\n\"\(fileUrl.path)\""
       }
 
-      let data = try Data(contentsOf: snapshotFileUrl)
+      let data = try Data(contentsOf: fileUrl)
       let reference = snapshotting.diffing.fromData(data)
 
       guard let (failure, attachments) = snapshotting.diffing.diff(reference, diffable) else {
@@ -137,7 +115,7 @@ public func verifySnapshot<Value, Format>(
       )
       let artifactsSubUrl = artifactsUrl.appendingPathComponent(fileName)
       try fileManager.createDirectory(at: artifactsSubUrl, withIntermediateDirectories: true)
-      let failedSnapshotFileUrl = artifactsSubUrl.appendingPathComponent(snapshotFileUrl.lastPathComponent)
+      let failedSnapshotFileUrl = artifactsSubUrl.appendingPathComponent(fileUrl.lastPathComponent)
       try snapshotting.diffing.toData(diffable).write(to: failedSnapshotFileUrl)
 
       if !attachments.isEmpty {
@@ -151,8 +129,8 @@ public func verifySnapshot<Value, Format>(
       }
 
       let diffMessage = diffTool
-        .map { "\($0) \"\(snapshotFileUrl.path)\" \"\(failedSnapshotFileUrl.path)\"" }
-        ?? "@\(minus)\n\"\(snapshotFileUrl.path)\"\n@\(plus)\n\"\(failedSnapshotFileUrl.path)\""
+        .map { "\($0) \"\(fileUrl.path)\" \"\(failedSnapshotFileUrl.path)\"" }
+        ?? "@\(minus)\n\"\(fileUrl.path)\"\n@\(plus)\n\"\(failedSnapshotFileUrl.path)\""
       return """
       \(failure.trimmingCharacters(in: .whitespacesAndNewlines))
 
@@ -170,42 +148,49 @@ public func verifySnapshot<Value, Format>(
 ///   - for: The test case's class
 ///   - file: The file in which failure occurred. Defaults to the file name of the test case in which this function was called.
 ///   - line: The line number on which failure occurred. Defaults to the line number on which this function was called.
-public func assertAllSnapshotsChecked(for testClass: XCTestCase.Type, file: StaticString = #file, line: UInt = #line) {
+public func assertAllSnapshotsChecked(for testClass: XCTestCase.Type,
+                                      file: StaticString = #file,
+                                      line: UInt = #line) {
+  let failure = verifyAllSnapshotsChecked(for: testClass, file: file)
+  guard let message = failure else { return }
+  XCTFail(message, file: file, line: line)
 
+}
+
+/// Verify that all snapshots were checked for a test case
+///
+/// - Parameters:
+///   - for: The test case's class
+///   - file: The file in which failure occurred. Defaults to the file name of the test case in which this function was called.
+func verifyAllSnapshotsChecked(for testClass: XCTestCase.Type, file: StaticString) -> String? {
   guard let testCount = numberOfTestMethods(testClass) else {
-    XCTFail("Couldn't find methodList for \(testClass)", file: file, line: line)
-    return
+    return "Couldn't find methodList for \(testClass)"
   }
-
-  let fileUrl = URL(fileURLWithPath: "\(file)")
-  let fileName = fileUrl.deletingPathExtension().lastPathComponent
-  let directoryUrl = fileUrl.deletingLastPathComponent()
-  let snapshotDirectoryUrl: URL = directoryUrl
-    .appendingPathComponent("__Snapshots__")
-    .appendingPathComponent(fileName)
-
-  let counter = counterQueue.sync { () -> Int in
-    checkedCounter[snapshotDirectoryUrl, default: 0] += 1
-    return checkedCounter[snapshotDirectoryUrl]!
+  
+  let (directoryUrl, _) = snapshotBase(file: file)
+  let counter = checkedQueue.sync { () -> Int in
+    checkedCounter[directoryUrl, default: 0] += 1
+    return checkedCounter[directoryUrl]!
   }
-
+  
   // only assert if all test were run
-  guard testCount == counter else { return }
-
+  guard testCount == counter else { return nil }
+  
   let fileManager = FileManager.default
   do {
-    let expected = try fileManager.contentsOfDirectory(at: snapshotDirectoryUrl,
+    let expected = try fileManager.contentsOfDirectory(at: directoryUrl,
                                                        includingPropertiesForKeys: [],
                                                        options: .skipsHiddenFiles)
     let diff: String = expected
-                         .filter { !checked[snapshotDirectoryUrl, default: []].contains($0) }
-                         .map { $0.absoluteString }
-                         .joined(separator: "\n")
-    if !diff.isEmpty {
-      XCTFail("These files were not checked:\n\(diff)", file: file, line: line)
+      .filter { !checked[directoryUrl, default: []].contains($0) }
+      .map { $0.absoluteString }
+      .joined(separator: "\n")
+    guard diff.isEmpty else {
+      return "These files were not checked:\n\(diff)"
     }
+    return nil
   } catch {
-    XCTFail(error.localizedDescription, file: file, line: line)
+    return error.localizedDescription
   }
 }
 
@@ -223,9 +208,7 @@ private func numberOfTestMethods(_ testClass: XCTestCase.Type) -> Int? {
   return count
 }
 
-private let counterQueue = DispatchQueue(label: "co.pointfree.SnapshotTesting.counter")
-private var counterMap: [URL: Int] = [:]
-
+private let checkedQueue = DispatchQueue(label: "co.pointfree.SnapshotTesting.checkedCounter")
 private var checkedCounter: [URL: Int] = [:]
 private var checked: [URL: [URL]] = [:]
 

@@ -36,27 +36,9 @@ open class SnapshotTestCase: XCTestCase {
     let recording = recording || self.record
 
     do {
-      let fileUrl = URL(fileURLWithPath: "\(file)")
-      let fileName = fileUrl.deletingPathExtension().lastPathComponent
-      let directoryUrl = fileUrl.deletingLastPathComponent()
-      let snapshotDirectoryUrl: URL = directoryUrl
-        .appendingPathComponent("__Snapshots__")
-        .appendingPathComponent(fileName)
-
-      let identifier: String
-      if let name = name {
-        identifier = sanitizePathComponent(name)
-      } else {
-        identifier = String(counter)
-        counter += 1
-      }
-
-      let testName = sanitizePathComponent(testName)
-      let snapshotFileUrl = snapshotDirectoryUrl
-        .appendingPathComponent("\(testName).\(identifier)")
-        .appendingPathExtension(snapshotting.pathExtension ?? "")
+      let (directoryUrl, fileUrl, fileName) = snapshot(file: file, name: name, testName: testName, pathExtension: snapshotting.pathExtension ?? "")
       let fileManager = FileManager.default
-      try fileManager.createDirectory(at: snapshotDirectoryUrl, withIntermediateDirectories: true)
+      try fileManager.createDirectory(at: directoryUrl, withIntermediateDirectories: true)
 
       let tookSnapshot = self.expectation(description: "Took snapshot")
       var optionalDiffable: Format?
@@ -75,13 +57,13 @@ open class SnapshotTestCase: XCTestCase {
         return
       }
 
-      guard !recording, fileManager.fileExists(atPath: snapshotFileUrl.path) else {
-        try snapshotting.diffing.toData(diffing).write(to: snapshotFileUrl)
-        XCTFail("Recorded snapshot: …\n\n\"\(snapshotFileUrl.path)\"", file: file, line: line)
+      guard !recording, fileManager.fileExists(atPath: fileUrl.path) else {
+        try snapshotting.diffing.toData(diffing).write(to: fileUrl)
+        XCTFail("Recorded snapshot: …\n\n\"\(fileUrl.path)\"", file: file, line: line)
         return
       }
 
-      let data = try Data(contentsOf: snapshotFileUrl)
+      let data = try Data(contentsOf: fileUrl)
       let reference = snapshotting.diffing.fromData(data)
 
       guard let (failure, attachments) = snapshotting.diffing.diff(reference, diffing) else {
@@ -93,7 +75,7 @@ open class SnapshotTestCase: XCTestCase {
       )
       let artifactsSubUrl = artifactsUrl.appendingPathComponent(fileName)
       try fileManager.createDirectory(at: artifactsSubUrl, withIntermediateDirectories: true)
-      let failedSnapshotFileUrl = artifactsSubUrl.appendingPathComponent(snapshotFileUrl.lastPathComponent)
+      let failedSnapshotFileUrl = artifactsSubUrl.appendingPathComponent(fileUrl.lastPathComponent)
       try snapshotting.diffing.toData(diffing).write(to: failedSnapshotFileUrl)
 
       if !attachments.isEmpty {
@@ -107,8 +89,8 @@ open class SnapshotTestCase: XCTestCase {
       }
 
       let diffMessage = self.diffTool
-        .map { "\($0) \"\(snapshotFileUrl.path)\" \"\(failedSnapshotFileUrl.path)\"" }
-        ?? "@\(minus)\n\"\(snapshotFileUrl.path)\"\n@\(plus)\n\"\(failedSnapshotFileUrl.path)\""
+        .map { "\($0) \"\(fileUrl.path)\" \"\(failedSnapshotFileUrl.path)\"" }
+        ?? "@\(minus)\n\"\(fileUrl.path)\"\n@\(plus)\n\"\(failedSnapshotFileUrl.path)\""
       let message = """
       \(failure.trimmingCharacters(in: .whitespacesAndNewlines))
 
@@ -119,7 +101,5 @@ open class SnapshotTestCase: XCTestCase {
       XCTFail(error.localizedDescription, file: file, line: line)
     }
   }
-
-  private var counter = 1
 }
 #endif
